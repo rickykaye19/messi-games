@@ -215,6 +215,22 @@ async function refreshDevices() {
 const play = (dev, uri, pos) => api('/me/player/play?device_id=' + encodeURIComponent(dev), {
   method: 'PUT', body: JSON.stringify({ uris: [uri], position_ms: pos })
 });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Pindahin pemutaran ke perangkat tujuan dulu (Spotify di HP sering "tidur"), lalu cek beneran bunyi.
+async function playChecked(dev, uri, pos) {
+  await api('/me/player', { method: 'PUT', body: JSON.stringify({ device_ids: [dev], play: false }) }).catch(() => { });
+  await sleep(600);
+  await play(dev, uri, pos);
+  for (let i = 0; i < 6; i++) {
+    await sleep(500);
+    const st = await api('/me/player').catch(() => null);
+    if (st && st.is_playing && st.device && st.device.id === dev && st.item &&
+        (st.item.uri === uri || (st.item.linked_from && st.item.linked_from.uri === uri))) return;
+  }
+  throw new Error(IS_MOBILE
+    ? 'Lagunya nggak bunyi. Buka aplikasi Spotify, puter lagu apa aja & biarin muter, balik ke sini, Refresh, pilih iPhone lu, lalu Mulai lagi.'
+    : 'Lagunya nggak bunyi di perangkat itu. Tekan Refresh, pilih perangkat lain, lalu Mulai lagi.');
+}
 const pause = dev => api('/me/player/pause?device_id=' + encodeURIComponent(dev), { method: 'PUT' }).catch(() => { });
 
 // ---------- Lagu ----------
@@ -246,7 +262,8 @@ async function startGame() {
     const tracks = shuffle(await loadTracks($('src').value));
     const n = +$('nRounds').value;
     if (tracks.length < n) throw new Error('Lagunya kurang (' + tracks.length + '). Pilih sumber lain.');
-    game = { dev, tracks: tracks.slice(0, n), i: 0, results: [] };
+    const devName = $('dev').selectedOptions[0].text;
+    game = { dev, devName, tracks: tracks.slice(0, n), i: 0, results: [] };
     await startRound();
   } catch (e) { toast(e.message); show('menu'); }
   $('startBtn').disabled = false;
@@ -261,10 +278,10 @@ async function startRound() {
   $('cover').src = (t.album.images[t.album.images.length > 1 ? 1 : 0] || {}).url || '';
   $('prog').style.width = '0';
   $('pad').classList.remove('go');
-  $('padMain').textContent = '...'; $('padSub').textContent = 'Muter lagu';
+  $('padMain').textContent = '...'; $('padSub').textContent = 'Muter di ' + game.devName;
   show('play');
   const pos = Math.floor(t.duration_ms * (0.25 + Math.random() * 0.3));
-  await play(game.dev, t.uri, pos);
+  await playChecked(game.dev, t.uri, pos);
   tapState = { phase: 'listen', taps: [], start: performance.now() };
   tick();
 }
