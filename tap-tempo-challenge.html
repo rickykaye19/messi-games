@@ -216,10 +216,9 @@ const play = (dev, uri, pos) => api('/me/player/play?device_id=' + encodeURIComp
   method: 'PUT', body: JSON.stringify({ uris: [uri], position_ms: pos })
 });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// Pindahin pemutaran ke perangkat tujuan dulu (Spotify di HP sering "tidur"), lalu cek beneran bunyi.
+// Puter lagu lalu cek beneran bunyi. Jangan pause/transfer dulu: Spotify di iPhone yang lagi di background
+// langsung "tidur" begitu berhenti muter, dan perintah putar berikutnya nggak dijalanin.
 async function playChecked(dev, uri, pos) {
-  await api('/me/player', { method: 'PUT', body: JSON.stringify({ device_ids: [dev], play: false }) }).catch(() => { });
-  await sleep(600);
   let st = null;
   for (let i = 0; i < 12; i++) {
     if (i === 0 || i === 5) await play(dev, uri, pos);
@@ -235,7 +234,8 @@ async function playChecked(dev, uri, pos) {
     ? 'Buka aplikasi Spotify, puter lagu apa aja & biarin muter, balik ke sini, Refresh, pilih iPhone lu, lalu Mulai lagi.'
     : 'Tekan Refresh, pilih perangkat lain, lalu Mulai lagi.'));
 }
-const pause = dev => api('/me/player/pause?device_id=' + encodeURIComponent(dev), { method: 'PUT' }).catch(() => { });
+// Di HP lagu dibiarin muter biar Spotify nggak "tidur" dan game berikutnya tetap bisa jalan.
+const pause = dev => IS_MOBILE ? Promise.resolve() : api('/me/player/pause?device_id=' + encodeURIComponent(dev), { method: 'PUT' }).catch(() => { });
 
 // ---------- Lagu ----------
 async function loadTracks(src) {
