@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Tap Tempo Challenge - Messi</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#0b0b12;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
+#app{max-width:520px;margin:0 auto;padding:20px 18px 40px;min-height:100vh;display:flex;flex-direction:column}
+.view{display:flex;flex-direction:column;gap:14px;flex:1}
+.hide{display:none!important}
+h1{margin:6px 0 0;font-size:30px;letter-spacing:1px;background:linear-gradient(90deg,#1ed760,#3cf0ff,#ff3cac);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{margin:0;font-size:20px}
+p{margin:0;opacity:.85;line-height:1.45}
+.small{font-size:13px;opacity:.7}
+label{font-size:13px;opacity:.75}
+input,select{width:100%;font-size:16px;padding:12px;border-radius:12px;border:1px solid #333;background:#16161f;color:#fff}
+button{font-size:17px;padding:14px;border-radius:30px;border:0;color:#fff;background:#2b2b40;cursor:pointer;width:100%}
+button.main{background:linear-gradient(90deg,#1db954,#1ed760);color:#06140b;font-weight:700}
+button.link{background:none;font-size:14px;opacity:.7;padding:6px}
+.row{display:flex;gap:10px}
+.row>*{flex:1}
+code{background:#16161f;padding:8px 10px;border-radius:8px;display:block;word-break:break-all;font-size:13px;-webkit-user-select:text;user-select:text}
+.np{display:flex;gap:12px;align-items:center;background:#16161f;border-radius:14px;padding:10px}
+.np img{width:64px;height:64px;border-radius:8px;object-fit:cover;background:#222}
+.np .t{font-weight:700}
+.np .a{font-size:14px;opacity:.7}
+#pad{flex:1;min-height:300px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle,#2a2a3d,#15151f);border:2px solid #2f2f45;touch-action:manipulation;transition:background .08s;cursor:pointer}
+#pad.go{border-color:#1ed760}
+#pad.flash{background:radial-gradient(circle,#1ed760,#15151f)}
+#padMain{font-size:54px;font-weight:800}
+#padSub{font-size:15px;opacity:.75;margin-top:6px}
+.bar{height:8px;background:#222;border-radius:4px;overflow:hidden}
+.bar>div{height:100%;width:0;background:linear-gradient(90deg,#1ed760,#3cf0ff)}
+.big{font-size:64px;font-weight:800;text-align:center}
+.list div{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #222;font-size:14px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#ff3c5a;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;max-width:90vw;z-index:9}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <section id="v-file" class="view hide">
+    <h1>TAP TEMPO CHALLENGE</h1>
+    <p>Game ini harus dibuka lewat link (http/https), nggak bisa dibuka langsung dari file. Minta Messi kirim link-nya.</p>
+  </section>
+
+  <section id="v-setup" class="view hide">
+    <h1>TAP TEMPO CHALLENGE</h1>
+    <p>Setup sekali aja. Bikin app di <b>developer.spotify.com/dashboard</b>, daftarkan Redirect URI di bawah, centang <b>Web API</b> + <b>Web Playback SDK</b>, lalu tempel Client ID-nya di sini.</p>
+    <label>Redirect URI (copy ke dashboard Spotify)</label>
+    <code id="redir"></code>
+    <label>Client ID</label>
+    <input id="cid" placeholder="contoh: 1a2b3c..." autocomplete="off">
+    <button class="main" id="saveCid">Simpan</button>
+  </section>
+
+  <section id="v-login" class="view hide">
+    <h1>TAP TEMPO CHALLENGE</h1>
+    <p>Lagu diputer dari Spotify lu, lu ketuk ngikutin beat-nya. Yang dinilai: seberapa stabil ketukan lu.</p>
+    <button class="main" id="loginBtn">Login Spotify</button>
+    <button class="link" id="resetCid">Ganti Client ID</button>
+  </section>
+
+  <section id="v-menu" class="view hide">
+    <h1>TAP TEMPO CHALLENGE</h1>
+    <p id="hello" class="small"></p>
+    <label>Sumber lagu</label>
+    <select id="src">
+      <option value="top">Top tracks gw (4 minggu terakhir)</option>
+      <option value="top6">Top tracks gw (6 bulan)</option>
+      <option value="liked">Liked songs</option>
+    </select>
+    <label>Putar di perangkat</label>
+    <div class="row">
+      <select id="dev"></select>
+      <button id="refreshDev" style="flex:0 0 100px">Refresh</button>
+    </div>
+    <p class="small" id="devHint"></p>
+    <label>Jumlah lagu</label>
+    <select id="nRounds"><option>3</option><option selected>5</option><option>10</option></select>
+    <button class="main" id="startBtn">Mulai</button>
+    <p class="small" id="bestTxt"></p>
+    <button class="link" id="logoutBtn">Logout</button>
+  </section>
+
+  <section id="v-play" class="view hide">
+    <div class="row small"><span id="roundTxt"></span><span id="scoreTxt" style="text-align:right"></span></div>
+    <div class="np"><img id="cover" alt=""><div><div class="t" id="title"></div><div class="a" id="artist"></div></div></div>
+    <div id="pad"><div id="padMain"></div><div id="padSub"></div></div>
+    <div class="bar"><div id="prog"></div></div>
+    <button class="link" id="quitBtn">Udahan</button>
+  </section>
+
+  <section id="v-round" class="view hide">
+    <h2 id="rTitle"></h2>
+    <div class="big" id="rScore"></div>
+    <p id="rInfo" style="text-align:center"></p>
+    <button class="main" id="nextBtn">Lagu berikutnya</button>
+  </section>
+
+  <section id="v-final" class="view hide">
+    <h1>HASIL</h1>
+    <div class="big" id="fScore"></div>
+    <p id="fInfo" style="text-align:center"></p>
+    <div class="list" id="fList"></div>
+    <button class="main" id="againBtn">Main lagi</button>
+  </section>
+</div>
+<div id="toast" class="hide"></div>
+
+<script>
+// Tap Tempo Challenge - lagu dari Spotify user, user ketuk ngikutin beat, dinilai kestabilannya.
+// Login: Authorization Code + PKCE (tanpa client secret). Client ID disimpan di localStorage perangkat.
+const $ = id => document.getElementById(id);
+const REDIRECT = location.origin + location.pathname;
+const SCOPES = 'streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state user-library-read user-top-read';
+const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const LEAD_IN = 3, TAP_MAX = 16, TAP_WINDOW = 15, MIN_TAPS = 8;
+const LS = {
+  get: k => localStorage.getItem('ttc-' + k),
+  set: (k, v) => localStorage.setItem('ttc-' + k, v),
+  del: k => localStorage.removeItem('ttc-' + k)
+};
+
+function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.toggle('hide', e.id !== 'v-' + v)); }
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.remove('hide');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hide'), 5000);
+}
+
+// ---------- Auth (PKCE) ----------
+const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function login() {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(64)));
+  LS.set('verifier', verifier);
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  const p = new URLSearchParams({
+    client_id: LS.get('cid'), response_type: 'code', redirect_uri: REDIRECT, scope: SCOPES,
+    code_challenge_method: 'S256', code_challenge: challenge
+  });
+  location.href = 'https://accounts.spotify.com/authorize?' + p;
+}
+async function tokenReq(body) {
+  const r = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body)
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error_description || j.error || 'Gagal ambil token');
+  LS.set('at', j.access_token);
+  if (j.refresh_token) LS.set('rt', j.refresh_token);
+  LS.set('exp', Date.now() + (j.expires_in - 60) * 1000);
+}
+async function handleRedirect() {
+  const q = new URLSearchParams(location.search);
+  if (!q.get('code') && !q.get('error')) return;
+  history.replaceState(null, '', REDIRECT);
+  if (q.get('error')) throw new Error('Login dibatalkan (' + q.get('error') + ')');
+  await tokenReq({
+    grant_type: 'authorization_code', code: q.get('code'), redirect_uri: REDIRECT,
+    client_id: LS.get('cid'), code_verifier: LS.get('verifier')
+  });
+}
+async function token() {
+  if (Date.now() > +(LS.get('exp') || 0)) {
+    if (!LS.get('rt')) throw new Error('Belum login');
+    await tokenReq({ grant_type: 'refresh_token', refresh_token: LS.get('rt'), client_id: LS.get('cid') });
+  }
+  return LS.get('at');
+}
+async function api(path, opt = {}) {
+  const r = await fetch('https://api.spotify.com/v1' + path, {
+    ...opt, headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }
+  });
+  const txt = await r.text();
+  let j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) { }
+  if (r.status === 401) { LS.del('at'); LS.del('exp'); }
+  if (!r.ok) throw new Error((j && j.error && (j.error.message || j.error)) || ('HTTP ' + r.status));
+  return j;
+}
+
+// ---------- Player ----------
+let player = null, sdkDevice = null;
+function loadSdk() {
+  if (IS_MOBILE || window.Spotify) return;
+  window.onSpotifyWebPlaybackSDKReady = () => {
+    player = new Spotify.Player({ name: 'Messi Tap Tempo', getOAuthToken: cb => token().then(cb), volume: 0.8 });
+    player.addListener('ready', ({ device_id }) => { sdkDevice = device_id; refreshDevices(); });
+    player.addListener('not_ready', () => { sdkDevice = null; });
+    player.addListener('initialization_error', e => toast('Player browser gagal: ' + e.message));
+    player.addListener('authentication_error', e => toast('Login Spotify bermasalah: ' + e.message));
+    player.addListener('account_error', () => toast('Pemutar di browser butuh Spotify Premium'));
+    player.connect();
+  };
+  const s = document.createElement('script');
+  s.src = 'https://sdk.scdn.co/spotify-player.js';
+  document.head.appendChild(s);
+}
+async function refreshDevices() {
+  const sel = $('dev'), prev = sel.value;
+  sel.innerHTML = '';
+  if (sdkDevice) sel.add(new Option('Browser ini (Messi Tap Tempo)', sdkDevice));
+  try {
+    const j = await api('/me/player/devices');
+    (j && j.devices || []).filter(d => d.id && d.id !== sdkDevice)
+      .forEach(d => sel.add(new Option(d.name + ' (' + d.type + ')' + (d.is_active ? ' - aktif' : ''), d.id)));
+  } catch (e) { toast('Gagal ambil daftar perangkat: ' + e.message); }
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  $('devHint').textContent = sel.options.length ? '' :
+    (IS_MOBILE ? 'Buka aplikasi Spotify di HP, puter lagu apa aja sebentar, lalu tekan Refresh.'
+               : 'Pemutar browser lagi disiapin... tunggu sebentar lalu tekan Refresh.');
+}
+const play = (dev, uri, pos) => api('/me/player/play?device_id=' + encodeURIComponent(dev), {
+  method: 'PUT', body: JSON.stringify({ uris: [uri], position_ms: pos })
+});
+const pause = dev => api('/me/player/pause?device_id=' + encodeURIComponent(dev), { method: 'PUT' }).catch(() => { });
+
+// ---------- Lagu ----------
+async function loadTracks(src) {
+  let items = [];
+  if (src === 'top' || src === 'top6') {
+    const j = await api('/me/top/tracks?limit=50&time_range=' + (src === 'top' ? 'short_term' : 'medium_term'));
+    items = j.items || [];
+  } else {
+    for (let off = 0; off < 200; off += 50) {
+      const j = await api('/me/tracks?limit=50&offset=' + off);
+      items = items.concat((j.items || []).map(i => i.track));
+      if (!j.next) break;
+    }
+  }
+  return items.filter(t => t && t.uri && !t.is_local && t.duration_ms > 60000);
+}
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const k = Math.floor(Math.random() * (i + 1)); [a[i], a[k]] = [a[k], a[i]]; } return a; };
+
+// ---------- Game ----------
+let game = null, tapState = null;
+
+async function startGame() {
+  const dev = $('dev').value;
+  if (!dev) return toast('Pilih perangkat dulu (tekan Refresh)');
+  if (player) player.activateElement();
+  $('startBtn').disabled = true;
+  try {
+    const tracks = shuffle(await loadTracks($('src').value));
+    const n = +$('nRounds').value;
+    if (tracks.length < n) throw new Error('Lagunya kurang (' + tracks.length + '). Pilih sumber lain.');
+    game = { dev, tracks: tracks.slice(0, n), i: 0, results: [] };
+    await startRound();
+  } catch (e) { toast(e.message); show('menu'); }
+  $('startBtn').disabled = false;
+}
+
+async function startRound() {
+  const t = game.tracks[game.i];
+  $('roundTxt').textContent = 'Lagu ' + (game.i + 1) + ' / ' + game.tracks.length;
+  $('scoreTxt').textContent = 'Total ' + game.results.reduce((s, r) => s + r.score, 0);
+  $('title').textContent = t.name;
+  $('artist').textContent = t.artists.map(a => a.name).join(', ');
+  $('cover').src = (t.album.images[t.album.images.length > 1 ? 1 : 0] || {}).url || '';
+  $('prog').style.width = '0';
+  $('pad').classList.remove('go');
+  $('padMain').textContent = '...'; $('padSub').textContent = 'Muter lagu';
+  show('play');
+  const pos = Math.floor(t.duration_ms * (0.25 + Math.random() * 0.3));
+  await play(game.dev, t.uri, pos);
+  tapState = { phase: 'listen', taps: [], start: performance.now() };
+  tick();
+}
+
+function tick() {
+  if (!tapState) return;
+  const el = (performance.now() - tapState.start) / 1000;
+  if (tapState.phase === 'listen') {
+    if (el < LEAD_IN) {
+      $('padMain').textContent = Math.ceil(LEAD_IN - el);
+      $('padSub').textContent = 'Dengerin beat-nya dulu';
+    } else {
+      tapState.phase = 'tap'; tapState.start = performance.now();
+      $('pad').classList.add('go');
+      $('padMain').textContent = 'TAP!'; $('padSub').textContent = 'Ketuk ngikutin beat';
+    }
+  } else if (tapState.phase === 'tap') {
+    const n = tapState.taps.length;
+    $('prog').style.width = Math.min(100, Math.max(n / TAP_MAX, el / TAP_WINDOW) * 100) + '%';
+    if (n >= TAP_MAX || el >= TAP_WINDOW) return endRound();
+  }
+  requestAnimationFrame(tick);
+}
+
+function onTap() {
+  if (!tapState || tapState.phase !== 'tap') return;
+  tapState.taps.push(performance.now() / 1000);
+  const pad = $('pad'); pad.classList.add('flash'); setTimeout(() => pad.classList.remove('flash'), 80);
+  const n = tapState.taps.length;
+  $('padMain').textContent = n;
+  if (n >= 4) $('padSub').textContent = '~' + Math.round(analyze(tapState.taps).bpm) + ' BPM';
+}
+
+// Regresi linear waktu ketukan vs urutan ketukan: slope = interval, sebaran residu = goyangnya ketukan.
+function analyze(ts) {
+  const n = ts.length, mx = (n - 1) / 2, my = ts.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0;
+  ts.forEach((y, x) => { sxy += (x - mx) * (y - my); sxx += (x - mx) ** 2; });
+  const slope = sxy / sxx, icpt = my - slope * mx;
+  const sd = Math.sqrt(ts.reduce((s, y, x) => s + (y - (icpt + slope * x)) ** 2, 0) / n);
+  const rel = sd / slope;
+  return { bpm: 60 / slope, rel, score: Math.round(100 * Math.exp(-rel * 8)) };
+}
+
+function endRound() {
+  const t = game.tracks[game.i], taps = tapState.taps;
+  tapState = null;
+  let r;
+  if (taps.length < MIN_TAPS) r = { name: t.name, score: 0, bpm: 0, note: 'Ketukan kurang (' + taps.length + ', minimal ' + MIN_TAPS + ')' };
+  else {
+    const a = analyze(taps);
+    const label = a.score >= 90 ? 'Stabil banget, kayak sync button' : a.score >= 75 ? 'Mantap, feel-nya dapet' :
+                  a.score >= 55 ? 'Lumayan, masih agak goyang' : 'Goyang parah, dengerin kick-nya lagi';
+    r = { name: t.name, score: a.score, bpm: a.bpm, note: label + '<br>Tempo lu ~' + Math.round(a.bpm) + ' BPM, meleset rata-rata ' + Math.round(a.rel * 100) + '% per ketukan' };
+  }
+  game.results.push(r);
+  game.i++;
+  $('rTitle').textContent = t.name;
+  $('rScore').textContent = r.score;
+  $('rInfo').innerHTML = r.note;
+  $('nextBtn').textContent = game.i < game.tracks.length ? 'Lagu berikutnya' : 'Lihat hasil';
+  show('round');
+}
+
+function finishGame() {
+  pause(game.dev);
+  const total = game.results.reduce((s, r) => s + r.score, 0);
+  const avg = Math.round(total / game.results.length);
+  const key = 'best-' + game.results.length, prev = +(LS.get(key) || 0);
+  if (avg > prev) LS.set(key, avg);
+  $('fScore').textContent = avg;
+  $('fInfo').textContent = 'Rata-rata ' + game.results.length + ' lagu' + (avg > prev ? ' - rekor baru!' : ' (rekor: ' + prev + ')');
+  const list = $('fList'); list.innerHTML = '';
+  game.results.forEach(r => {
+    const d = document.createElement('div');
+    const a = document.createElement('span'); a.textContent = r.name;
+    const b = document.createElement('span'); b.textContent = r.score + (r.bpm ? ' (~' + Math.round(r.bpm) + ' BPM)' : '');
+    d.append(a, b); list.append(d);
+  });
+  show('final');
+}
+
+function updateBest() {
+  const parts = [3, 5, 10].filter(n => LS.get('best-' + n)).map(n => n + ' lagu: ' + LS.get('best-' + n));
+  $('bestTxt').textContent = parts.length ? 'Rekor - ' + parts.join('  |  ') : '';
+}
+
+async function initMenu() {
+  show('menu'); updateBest();
+  try {
+    const me = await api('/me');
+    $('hello').textContent = 'Login sebagai ' + (me.display_name || me.id) + (me.product && me.product !== 'premium' ? ' - akun bukan Premium, lagu mungkin nggak bisa diputer' : '');
+  } catch (e) {
+    toast(e.message);
+    if (!LS.get('at')) return show('login');
+  }
+  loadSdk();
+  refreshDevices();
+}
+
+// ---------- Event ----------
+$('redir').textContent = REDIRECT;
+$('saveCid').onclick = () => {
+  const v = $('cid').value.trim();
+  if (!/^[0-9a-f]{32}$/i.test(v)) return toast('Client ID harus 32 karakter (huruf a-f & angka)');
+  LS.set('cid', v); show('login');
+};
+$('resetCid').onclick = () => { LS.del('cid'); show('setup'); };
+$('loginBtn').onclick = () => login().catch(e => toast(e.message));
+$('logoutBtn').onclick = () => { ['at', 'rt', 'exp'].forEach(LS.del); if (player) player.disconnect(); location.reload(); };
+$('refreshDev').onclick = refreshDevices;
+$('startBtn').onclick = startGame;
+$('nextBtn').onclick = () => game.i < game.tracks.length ? startRound().catch(e => { toast(e.message); show('menu'); }) : finishGame();
+$('againBtn').onclick = () => initMenu();
+$('quitBtn').onclick = () => { tapState = null; pause(game.dev); initMenu(); };
+$('pad').addEventListener('pointerdown', e => { e.preventDefault(); onTap(); });
+addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); onTap(); } });
+
+(async () => {
+  if (location.protocol === 'file:') return show('file');
+  try { await handleRedirect(); } catch (e) { toast(e.message); }
+  if (!LS.get('cid')) return show('setup');
+  if (!LS.get('rt')) return show('login');
+  initMenu();
+})();
+</script>
+</body>
+</html>
