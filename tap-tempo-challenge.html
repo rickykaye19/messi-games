@@ -71,6 +71,7 @@ code{background:#16161f;padding:8px 10px;border-radius:8px;display:block;word-br
       <option value="top">Top tracks gw (4 minggu terakhir)</option>
       <option value="top6">Top tracks gw (6 bulan)</option>
       <option value="liked">Liked songs</option>
+      <option value="now">Gw puter sendiri di Spotify (paling aman di HP)</option>
     </select>
     <label>Putar di perangkat</label>
     <div class="row">
@@ -225,14 +226,23 @@ async function playChecked(dev, uri, pos) {
     await sleep(700);
     st = await api('/me/player').catch(e => ({ err: e.message }));
     const same = st && st.item && (st.item.uri === uri || (st.item.linked_from && st.item.linked_from.uri === uri));
-    if (same && st.is_playing) return;
+    if (same && st.is_playing) return st.item;
   }
-  // Info diagnosa biar ketahuan macetnya di mana
-  const diag = !st ? 'status kosong (nggak ada perangkat aktif)' : st.err ? 'error: ' + st.err :
-    'perangkat: ' + (st.device ? st.device.name : '-') + ', main: ' + st.is_playing + ', lagu: ' + (st.item ? st.item.name : '-');
-  throw new Error('Lagunya nggak bunyi. [' + diag + '] ' + (IS_MOBILE
-    ? 'Buka aplikasi Spotify, puter lagu apa aja & biarin muter, balik ke sini, Refresh, pilih iPhone lu, lalu Mulai lagi.'
-    : 'Tekan Refresh, pilih perangkat lain, lalu Mulai lagi.'));
+  return null;
+}
+// Cadangan kalau perintah putar nggak jalan (sering di iPhone): user tekan Play sendiri di aplikasi Spotify,
+// game nunggu sampai ada lagu yang beneran muter lalu pakai lagu itu.
+async function waitForPlayback(msg, notUri) {
+  $('padMain').textContent = '▶';
+  for (let i = 0; i < 120; i++) {
+    if (!game || game.aborted) throw new Error('');
+    const st = await api('/me/player/currently-playing').catch(() => null);
+    const it = st && st.is_playing && st.item;
+    if (it && it.type === 'track' && it.uri !== notUri) return it;
+    $('padSub').textContent = it && it.uri === notUri ? 'Ganti lagu dulu di Spotify (tekan next), terus balik ke sini' : msg;
+    await sleep(1000);
+  }
+  throw new Error('Kelamaan nunggu Spotify muter. Coba lagi ya.');
 }
 // Di HP lagu dibiarin muter biar Spotify nggak "tidur" dan game berikutnya tetap bisa jalan.
 const pause = dev => IS_MOBILE ? Promise.resolve() : api('/me/player/pause?device_id=' + encodeURIComponent(dev), { method: 'PUT' }).catch(() => { });
@@ -263,29 +273,47 @@ async function startGame() {
   if (player) player.activateElement();
   $('startBtn').disabled = true;
   try {
-    const tracks = shuffle(await loadTracks($('src').value));
-    const n = +$('nRounds').value;
-    if (tracks.length < n) throw new Error('Lagunya kurang (' + tracks.length + '). Pilih sumber lain.');
+    const src = $('src').value, n = +$('nRounds').value;
+    let tracks;
+    if (src === 'now') tracks = Array(n).fill(null);
+    else {
+      tracks = shuffle(await loadTracks(src));
+      if (tracks.length < n) throw new Error('Lagunya kurang (' + tracks.length + '). Pilih sumber lain.');
+      tracks = tracks.slice(0, n);
+    }
     const devName = $('dev').selectedOptions[0].text;
-    game = { dev, devName, tracks: tracks.slice(0, n), i: 0, results: [] };
+    game = { dev, devName, manual: src === 'now', tracks, i: 0, results: [], lastUri: null };
     await startRound();
-  } catch (e) { toast(e.message); show('menu'); }
+  } catch (e) { if (e.message) toast(e.message); show('menu'); }
   $('startBtn').disabled = false;
 }
 
+function setNowPlaying(t) {
+  $('title').textContent = t ? t.name : 'Nunggu lagu dari Spotify...';
+  $('artist').textContent = t ? t.artists.map(a => a.name).join(', ') : '';
+  $('cover').src = t ? ((t.album.images[t.album.images.length > 1 ? 1 : 0] || {}).url || '') : '';
+}
+
 async function startRound() {
-  const t = game.tracks[game.i];
+  let t = game.tracks[game.i];
   $('roundTxt').textContent = 'Lagu ' + (game.i + 1) + ' / ' + game.tracks.length;
   $('scoreTxt').textContent = 'Total ' + game.results.reduce((s, r) => s + r.score, 0);
-  $('title').textContent = t.name;
-  $('artist').textContent = t.artists.map(a => a.name).join(', ');
-  $('cover').src = (t.album.images[t.album.images.length > 1 ? 1 : 0] || {}).url || '';
+  setNowPlaying(t);
   $('prog').style.width = '0';
   $('pad').classList.remove('go');
   $('padMain').textContent = '...'; $('padSub').textContent = 'Muter di ' + game.devName;
   show('play');
-  const pos = Math.floor(t.duration_ms * (0.25 + Math.random() * 0.3));
-  await playChecked(game.dev, t.uri, pos);
+  let item;
+  if (game.manual) {
+    item = await waitForPlayback('Puter lagu di aplikasi Spotify, terus balik ke sini', game.lastUri);
+  } else {
+    const pos = Math.floor(t.duration_ms * (0.25 + Math.random() * 0.3));
+    item = await playChecked(game.dev, t.uri, pos) ||
+      await waitForPlayback('Spotify belum muter. Buka aplikasi Spotify, tekan Play, terus balik ke sini');
+  }
+  t = game.tracks[game.i] = item;
+  game.lastUri = item.uri;
+  setNowPlaying(t);
   tapState = { phase: 'listen', taps: [], start: performance.now() };
   tick();
 }
@@ -346,6 +374,7 @@ function endRound() {
   $('rTitle').textContent = t.name;
   $('rScore').textContent = r.score;
   $('rInfo').innerHTML = r.note;
+  if (game.manual && game.i < game.tracks.length) $('rInfo').innerHTML += '<br><br>Ganti lagu di Spotify (tekan next), terus tekan tombol di bawah';
   $('nextBtn').textContent = game.i < game.tracks.length ? 'Lagu berikutnya' : 'Lihat hasil';
   show('round');
 }
@@ -398,9 +427,9 @@ $('loginBtn').onclick = () => login().catch(e => toast(e.message));
 $('logoutBtn').onclick = () => { ['at', 'rt', 'exp'].forEach(LS.del); if (player) player.disconnect(); location.reload(); };
 $('refreshDev').onclick = refreshDevices;
 $('startBtn').onclick = startGame;
-$('nextBtn').onclick = () => game.i < game.tracks.length ? startRound().catch(e => { toast(e.message); show('menu'); }) : finishGame();
+$('nextBtn').onclick = () => game.i < game.tracks.length ? startRound().catch(e => { if (e.message) toast(e.message); show('menu'); }) : finishGame();
 $('againBtn').onclick = () => initMenu();
-$('quitBtn').onclick = () => { tapState = null; pause(game.dev); initMenu(); };
+$('quitBtn').onclick = () => { tapState = null; game.aborted = true; pause(game.dev); initMenu(); };
 $('pad').addEventListener('pointerdown', e => { e.preventDefault(); onTap(); });
 addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat) { e.preventDefault(); onTap(); } });
 
