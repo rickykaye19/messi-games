@@ -128,7 +128,7 @@ function show(v) { document.querySelectorAll('.view').forEach(e => e.classList.t
 let toastTimer;
 function toast(msg) {
   const t = $('toast'); t.textContent = msg; t.classList.remove('hide');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hide'), 5000);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hide'), 10000);
 }
 
 // ---------- Auth (PKCE) ----------
@@ -220,16 +220,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function playChecked(dev, uri, pos) {
   await api('/me/player', { method: 'PUT', body: JSON.stringify({ device_ids: [dev], play: false }) }).catch(() => { });
   await sleep(600);
-  await play(dev, uri, pos);
-  for (let i = 0; i < 6; i++) {
-    await sleep(500);
-    const st = await api('/me/player').catch(() => null);
-    if (st && st.is_playing && st.device && st.device.id === dev && st.item &&
-        (st.item.uri === uri || (st.item.linked_from && st.item.linked_from.uri === uri))) return;
+  let st = null;
+  for (let i = 0; i < 12; i++) {
+    if (i === 0 || i === 5) await play(dev, uri, pos);
+    await sleep(700);
+    st = await api('/me/player').catch(e => ({ err: e.message }));
+    const same = st && st.item && (st.item.uri === uri || (st.item.linked_from && st.item.linked_from.uri === uri));
+    if (same && st.is_playing) return;
   }
-  throw new Error(IS_MOBILE
-    ? 'Lagunya nggak bunyi. Buka aplikasi Spotify, puter lagu apa aja & biarin muter, balik ke sini, Refresh, pilih iPhone lu, lalu Mulai lagi.'
-    : 'Lagunya nggak bunyi di perangkat itu. Tekan Refresh, pilih perangkat lain, lalu Mulai lagi.');
+  // Info diagnosa biar ketahuan macetnya di mana
+  const diag = !st ? 'status kosong (nggak ada perangkat aktif)' : st.err ? 'error: ' + st.err :
+    'perangkat: ' + (st.device ? st.device.name : '-') + ', main: ' + st.is_playing + ', lagu: ' + (st.item ? st.item.name : '-');
+  throw new Error('Lagunya nggak bunyi. [' + diag + '] ' + (IS_MOBILE
+    ? 'Buka aplikasi Spotify, puter lagu apa aja & biarin muter, balik ke sini, Refresh, pilih iPhone lu, lalu Mulai lagi.'
+    : 'Tekan Refresh, pilih perangkat lain, lalu Mulai lagi.'));
 }
 const pause = dev => api('/me/player/pause?device_id=' + encodeURIComponent(dev), { method: 'PUT' }).catch(() => { });
 
